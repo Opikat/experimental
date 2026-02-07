@@ -1,2 +1,2 @@
-# experimental
+# opikat-personal-experiments
 personal projects
