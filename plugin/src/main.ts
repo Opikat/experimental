@@ -15,10 +15,13 @@ import type {
 
 figma.showUI(__html__, { width: 360, height: 580 });
 
+const GRID_STEP = 4;
+const CONTEXT_OVERRIDE: 'auto' = 'auto';
+
 const DEFAULT_SETTINGS: PluginSettings = {
-  gridStep: 4,
+  gridStep: GRID_STEP,
   bgMode: 'auto',
-  contextOverride: 'auto',
+  contextOverride: CONTEXT_OVERRIDE,
   autoApply: false,
   writeVariables: false,
 };
@@ -94,11 +97,7 @@ function analyzeTextNode(node: TextNode): TextLayerInfo | null {
   const textCase = node.textCase;
   const isUppercase = textCase === 'UPPER';
 
-  const darkBg = settings.bgMode === 'dark'
-    ? true
-    : settings.bgMode === 'light'
-      ? false
-      : isDarkBackground(node);
+  const darkBg = isDarkBackground(node);
 
   return {
     nodeId: node.id,

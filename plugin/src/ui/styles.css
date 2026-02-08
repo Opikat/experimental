@@ -261,6 +261,19 @@ select:focus {
   cursor: pointer;
 }
 
+.setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.setting-hint {
+  font-size: 10px;
+  color: var(--figma-color-text-tertiary, #b3b3b3);
+  line-height: 1.4;
+  padding-left: 18px;
+}
+
 /* --- Empty state --- */
 .empty-state {
   text-align: center;

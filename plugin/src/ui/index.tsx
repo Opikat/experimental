@@ -1,14 +1,9 @@
 import { h, render, Fragment } from 'preact';
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 
-type BgMode = 'auto' | 'light' | 'dark';
-type TextContext = 'display' | 'body' | 'caption';
 type ExportFormat = 'css' | 'css-fluid' | 'ios' | 'android';
 
 interface Settings {
-  gridStep: number;
-  bgMode: BgMode;
-  contextOverride: TextContext | 'auto';
   autoApply: boolean;
   writeVariables: boolean;
 }
@@ -31,9 +26,6 @@ interface ResultEntry {
 
 function App() {
   const [settings, setSettings] = useState<Settings>({
-    gridStep: 4,
-    bgMode: 'auto',
-    contextOverride: 'auto',
     autoApply: false,
     writeVariables: false,
   });
@@ -59,7 +51,6 @@ function App() {
         case 'calculation-results':
           setResults(msg.results);
           setHasSelection(true);
-          // Request export for first node
           if (msg.results.length > 0) {
             parent.postMessage({
               pluginMessage: {
@@ -84,11 +75,11 @@ function App() {
     return () => window.removeEventListener('message', handler);
   }, [exportFormat]);
 
-  const updateSetting = useCallback(<K extends keyof Settings>(key: K, value: Settings[K]) => {
+  const updateSetting = (key: keyof Settings, value: boolean) => {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
     parent.postMessage({ pluginMessage: { type: 'update-settings', settings: { [key]: value } } }, '*');
-  }, [settings]);
+  };
 
   const handleApplySelected = () => {
     parent.postMessage({ pluginMessage: { type: 'apply-selected' } }, '*');
@@ -123,52 +114,6 @@ function App() {
 
   return (
     <>
-      {/* Controls */}
-      <div class="section">
-        <div class="controls-row">
-          <label>Context:</label>
-          <select
-            value={settings.contextOverride}
-            onChange={(e) => updateSetting('contextOverride', (e.target as HTMLSelectElement).value as TextContext | 'auto')}
-          >
-            <option value="auto">Auto</option>
-            <option value="display">Display</option>
-            <option value="body">Body</option>
-            <option value="caption">Caption</option>
-          </select>
-
-          <label>Grid:</label>
-          <select
-            value={settings.gridStep}
-            onChange={(e) => updateSetting('gridStep', Number((e.target as HTMLSelectElement).value))}
-          >
-            <option value={1}>Off</option>
-            <option value={2}>2px</option>
-            <option value={4}>4px</option>
-            <option value={8}>8px</option>
-          </select>
-        </div>
-
-        <div class="controls-row">
-          <label>Background:</label>
-          <div class="radio-group">
-            {(['auto', 'light', 'dark'] as BgMode[]).map((mode) => (
-              <label key={mode}>
-                <input
-                  type="radio"
-                  name="bgMode"
-                  checked={settings.bgMode === mode}
-                  onChange={() => updateSetting('bgMode', mode)}
-                />
-                {mode === 'auto' ? 'Auto' : mode === 'light' ? 'Light' : 'Dark'}
-              </label>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div class="divider" />
-
       {/* Results */}
       {!hasSelection ? (
         <div class="empty-state">
@@ -279,23 +224,40 @@ function App() {
       {/* Settings */}
       <div class="section">
         <div class="section-title">Settings</div>
-        <div class="checkbox-row">
-          <input
-            type="checkbox"
-            id="writeVariables"
-            checked={settings.writeVariables}
-            onChange={(e) => updateSetting('writeVariables', (e.target as HTMLInputElement).checked)}
-          />
-          <label for="writeVariables">Write to Variables</label>
+
+        <div class="setting-item">
+          <div class="checkbox-row">
+            <input
+              type="checkbox"
+              id="autoApply"
+              checked={settings.autoApply}
+              onChange={(e) => updateSetting('autoApply', (e.target as HTMLInputElement).checked)}
+            />
+            <label for="autoApply">Auto-apply on selection change</label>
+          </div>
+          <div class="setting-hint">
+            When enabled, optimized values are immediately applied
+            to every text layer you select — no need to click "Apply".
+            Disable if you want to preview values first.
+          </div>
         </div>
-        <div class="checkbox-row">
-          <input
-            type="checkbox"
-            id="autoApply"
-            checked={settings.autoApply}
-            onChange={(e) => updateSetting('autoApply', (e.target as HTMLInputElement).checked)}
-          />
-          <label for="autoApply">Auto-apply on selection change</label>
+
+        <div class="setting-item">
+          <div class="checkbox-row">
+            <input
+              type="checkbox"
+              id="writeVariables"
+              checked={settings.writeVariables}
+              onChange={(e) => updateSetting('writeVariables', (e.target as HTMLInputElement).checked)}
+            />
+            <label for="writeVariables">Save to Figma Variables</label>
+          </div>
+          <div class="setting-hint">
+            Creates a "TypeTune" variable collection with line-height
+            and letter-spacing values for each text style. Useful for
+            design systems — developers can read these variables directly.
+            Includes Light and Dark mode variants.
+          </div>
         </div>
       </div>
     </>
