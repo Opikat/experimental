@@ -10,8 +10,10 @@ interface Settings {
 
 interface ResultEntry {
   nodeId: string;
+  nodeIds: string[];
   fontInfo: string;
   isApproximate: boolean;
+  count: number;
   before: { lineHeight: string; letterSpacing: string };
   after: {
     lineHeight: number;
@@ -30,8 +32,10 @@ function App() {
     writeVariables: false,
   });
   const [results, setResults] = useState<ResultEntry[]>([]);
+  const [totalLayers, setTotalLayers] = useState(0);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('css');
   const [exportCode, setExportCode] = useState('');
+  const [selectedExportIdx, setSelectedExportIdx] = useState(0);
   const [copied, setCopied] = useState(false);
   const [hasSelection, setHasSelection] = useState(true);
 
@@ -50,7 +54,9 @@ function App() {
           break;
         case 'calculation-results':
           setResults(msg.results);
+          setTotalLayers(msg.totalLayers || msg.results.length);
           setHasSelection(true);
+          setSelectedExportIdx(0);
           if (msg.results.length > 0) {
             parent.postMessage({
               pluginMessage: {
@@ -91,12 +97,27 @@ function App() {
 
   const handleExportTab = (format: ExportFormat) => {
     setExportFormat(format);
-    if (results.length > 0) {
+    const r = results[selectedExportIdx];
+    if (r) {
       parent.postMessage({
         pluginMessage: {
           type: 'export-code',
-          nodeId: results[0].nodeId,
+          nodeId: r.nodeId,
           format,
+        },
+      }, '*');
+    }
+  };
+
+  const handleSelectExport = (idx: number) => {
+    setSelectedExportIdx(idx);
+    const r = results[idx];
+    if (r) {
+      parent.postMessage({
+        pluginMessage: {
+          type: 'export-code',
+          nodeId: r.nodeId,
+          format: exportFormat,
         },
       }, '*');
     }
@@ -109,8 +130,6 @@ function App() {
       setTimeout(() => setCopied(false), 1500);
     });
   };
-
-  const firstResult = results[0];
 
   return (
     <>
@@ -134,46 +153,57 @@ function App() {
         <>
           <div class="section">
             <div class="section-title">
-              Result{results.length > 1 ? ` (${results.length} layers)` : ''}
+              {results.length === 1
+                ? 'Result'
+                : `${results.length} unique style${results.length > 1 ? 's' : ''} (${totalLayers} layer${totalLayers !== 1 ? 's' : ''})`}
             </div>
-            {firstResult && (
-              <div class="result-card">
-                <div class="font-info">
-                  {firstResult.fontInfo}
-                  {firstResult.isApproximate && (
-                    <span class="approximate-badge">approx</span>
-                  )}
+            <div class="results-list">
+              {results.map((r, idx) => (
+                <div
+                  key={r.nodeId}
+                  class={`result-card${results.length > 1 && idx === selectedExportIdx ? ' result-card-selected' : ''}`}
+                  onClick={() => results.length > 1 && handleSelectExport(idx)}
+                >
+                  <div class="font-info">
+                    {r.fontInfo}
+                    {r.count > 1 && (
+                      <span class="count-badge">{r.count}x</span>
+                    )}
+                    {r.isApproximate && (
+                      <span class="approximate-badge">approx</span>
+                    )}
+                  </div>
+                  <div class="result-row">
+                    <span class="result-label">Line-height</span>
+                    <span>
+                      <span class="result-value">
+                        {r.after.lineHeight}px
+                      </span>
+                      <span style="color: var(--figma-color-text-secondary, #888); margin-left: 4px">
+                        ({r.after.lineHeightPercent}%)
+                      </span>
+                      <span class="result-prev">
+                        {r.before.lineHeight}
+                      </span>
+                    </span>
+                  </div>
+                  <div class="result-row">
+                    <span class="result-label">Letter-spacing</span>
+                    <span>
+                      <span class="result-value">
+                        {r.after.letterSpacing}px
+                      </span>
+                      <span style="color: var(--figma-color-text-secondary, #888); margin-left: 4px">
+                        ({r.after.letterSpacingPercent}%)
+                      </span>
+                      <span class="result-prev">
+                        {r.before.letterSpacing}
+                      </span>
+                    </span>
+                  </div>
                 </div>
-                <div class="result-row">
-                  <span class="result-label">Line-height</span>
-                  <span>
-                    <span class="result-value">
-                      {firstResult.after.lineHeight}px
-                    </span>
-                    <span style="color: var(--figma-color-text-secondary, #888); margin-left: 4px">
-                      ({firstResult.after.lineHeightPercent}%)
-                    </span>
-                    <span class="result-prev">
-                      {firstResult.before.lineHeight}
-                    </span>
-                  </span>
-                </div>
-                <div class="result-row">
-                  <span class="result-label">Letter-spacing</span>
-                  <span>
-                    <span class="result-value">
-                      {firstResult.after.letterSpacing}px
-                    </span>
-                    <span style="color: var(--figma-color-text-secondary, #888); margin-left: 4px">
-                      ({firstResult.after.letterSpacingPercent}%)
-                    </span>
-                    <span class="result-prev">
-                      {firstResult.before.letterSpacing}
-                    </span>
-                  </span>
-                </div>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
 
           {/* Apply buttons */}
@@ -190,7 +220,14 @@ function App() {
 
           {/* Export */}
           <div class="section">
-            <div class="section-title">Export</div>
+            <div class="section-title">
+              Export
+              {results.length > 1 && (
+                <span style="font-weight: 400; text-transform: none; margin-left: 4px">
+                  — {results[selectedExportIdx].fontInfo}
+                </span>
+              )}
+            </div>
             <div class="export-tabs">
               {([
                 ['css', 'CSS'],
