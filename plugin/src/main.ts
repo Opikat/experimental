@@ -68,8 +68,8 @@ function describeLineHeight(node: TextNode): string {
   if (typeof lh === 'symbol') return 'auto';
   if ('unit' in lh) {
     if (lh.unit === 'AUTO') return 'auto';
-    if (lh.unit === 'PERCENT') return `${lh.value}%`;
-    return `${lh.value}px`;
+    if (lh.unit === 'PERCENT') return `${Math.round(lh.value * 10) / 10}%`;
+    return `${Math.round(lh.value * 100) / 100}px`;
   }
   return 'auto';
 }
@@ -78,8 +78,8 @@ function describeLetterSpacing(node: TextNode): string {
   const ls = node.letterSpacing as LetterSpacing;
   if (typeof ls === 'symbol') return '0';
   if ('unit' in ls) {
-    if (ls.unit === 'PERCENT') return `${ls.value}%`;
-    return `${ls.value}px`;
+    if (ls.unit === 'PERCENT') return `${Math.round(ls.value * 10) / 10}%`;
+    return `${Math.round(ls.value * 100) / 100}px`;
   }
   return '0';
 }

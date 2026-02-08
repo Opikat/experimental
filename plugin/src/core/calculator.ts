@@ -11,11 +11,13 @@ export function detectContext(fontSize: number): TextContext {
 function getContextMultiplier(context: TextContext, fontSize: number): number {
   switch (context) {
     case 'display': {
-      // Large display (>=64) gets extra tightening
-      if (fontSize >= 64) return 0.87;
-      // Scale from 1.0 at 32px to 0.9 at 64px
-      const t = (fontSize - 32) / 32;
-      return 1.0 - t * 0.1;
+      // Regressive scale: larger display text → tighter line-height
+      // Targets: 32px → ~130%, 48px → ~120%, 64px → ~115%, 96px → ~112%, 128px+ → ~110%
+      const maxMul = 0.87; // at 32px → 1.5 * 0.87 = 130%
+      const minMul = 0.73; // at 128px+ → 1.5 * 0.73 = 110%
+      if (fontSize >= 128) return minMul;
+      const t = (fontSize - 32) / 96;
+      return maxMul - t * (maxMul - minMul);
     }
     case 'caption':
       return 1.1;
