@@ -8,7 +8,7 @@ const commonMain = {
   bundle: true,
   outfile: 'dist/main.js',
   format: 'iife',
-  target: 'es2020',
+  target: 'es2017',
 };
 
 const commonUI = {
@@ -16,7 +16,7 @@ const commonUI = {
   bundle: true,
   outfile: 'dist/ui.js',
   format: 'iife',
-  target: 'es2020',
+  target: 'es2017',
   jsxFactory: 'h',
   jsxFragment: 'Fragment',
   define: {
