@@ -6,6 +6,13 @@ type ExportFormat = 'css' | 'css-fluid' | 'ios' | 'android';
 interface Settings {
   autoApply: boolean;
   writeVariables: boolean;
+  updateStyles: boolean;
+}
+
+interface StyleChange {
+  styleName: string;
+  before: { lineHeight: string; letterSpacing: string };
+  after: { lineHeight: string; letterSpacing: string };
 }
 
 interface ResultEntry {
@@ -30,6 +37,7 @@ function App() {
   const [settings, setSettings] = useState<Settings>({
     autoApply: false,
     writeVariables: false,
+    updateStyles: false,
   });
   const [results, setResults] = useState<ResultEntry[]>([]);
   const [totalLayers, setTotalLayers] = useState(0);
@@ -37,7 +45,10 @@ function App() {
   const [exportCode, setExportCode] = useState('');
   const [selectedExportIdx, setSelectedExportIdx] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [copiedChangelog, setCopiedChangelog] = useState(false);
   const [hasSelection, setHasSelection] = useState(true);
+  const [changelog, setChangelog] = useState('');
+  const [styleChanges, setStyleChanges] = useState<StyleChange[]>([]);
 
   useEffect(() => {
     parent.postMessage({ pluginMessage: { type: 'init' } }, '*');
@@ -75,6 +86,10 @@ function App() {
         case 'export-result':
           setExportCode(msg.code);
           break;
+        case 'style-changelog':
+          setChangelog(msg.changelog);
+          setStyleChanges(msg.changes);
+          break;
       }
     };
     window.addEventListener('message', handler);
@@ -91,8 +106,12 @@ function App() {
     parent.postMessage({ pluginMessage: { type: 'apply-selected' } }, '*');
   };
 
-  const handleApplyPage = () => {
-    parent.postMessage({ pluginMessage: { type: 'apply-page' } }, '*');
+  const handleCopyChangelog = () => {
+    if (!changelog) return;
+    navigator.clipboard.writeText(changelog).then(() => {
+      setCopiedChangelog(true);
+      setTimeout(() => setCopiedChangelog(false), 1500);
+    });
   };
 
   const handleExportTab = (format: ExportFormat) => {
@@ -206,15 +225,10 @@ function App() {
             </div>
           </div>
 
-          {/* Apply buttons */}
-          <div class="btn-group">
-            <button class="btn btn-primary" onClick={handleApplySelected}>
-              Apply to selected
-            </button>
-            <button class="btn btn-secondary" onClick={handleApplyPage}>
-              Apply to page
-            </button>
-          </div>
+          {/* Apply button */}
+          <button class="btn btn-primary" onClick={handleApplySelected}>
+            Apply to selected
+          </button>
 
           <div class="divider" />
 
@@ -253,6 +267,34 @@ function App() {
               </div>
             )}
           </div>
+
+          {/* Changelog */}
+          {styleChanges.length > 0 && (
+            <>
+              <div class="divider" />
+              <div class="section">
+                <div class="section-title">
+                  Changelog ({styleChanges.length} style{styleChanges.length !== 1 ? 's' : ''})
+                </div>
+                <div class="changelog-list">
+                  {styleChanges.map(c => (
+                    <div class="changelog-item" key={c.styleName}>
+                      <div class="changelog-name">{c.styleName}</div>
+                      <div class="changelog-diff">
+                        LH: {c.before.lineHeight} → {c.after.lineHeight}
+                      </div>
+                      <div class="changelog-diff">
+                        LS: {c.before.letterSpacing} → {c.after.letterSpacing}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button class="btn btn-secondary" onClick={handleCopyChangelog}>
+                  {copiedChangelog ? 'Copied!' : 'Copy changelog (markdown)'}
+                </button>
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -276,6 +318,23 @@ function App() {
             When enabled, optimized values are immediately applied
             to every text layer you select — no need to click "Apply".
             Disable if you want to preview values first.
+          </div>
+        </div>
+
+        <div class="setting-item">
+          <div class="checkbox-row">
+            <input
+              type="checkbox"
+              id="updateStyles"
+              checked={settings.updateStyles}
+              onChange={(e) => updateSetting('updateStyles', (e.target as HTMLInputElement).checked)}
+            />
+            <label for="updateStyles">Update text styles</label>
+          </div>
+          <div class="setting-hint">
+            When a text layer uses a shared text style, the style itself
+            is updated with new values — all instances across the file
+            update automatically. Shows a changelog for developers.
           </div>
         </div>
 
