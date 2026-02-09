@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS: PluginSettings = {
   contextOverride: CONTEXT_OVERRIDE,
   autoApply: false,
   writeVariables: false,
+  updateStyles: false,
 };
 
 let settings: PluginSettings = { ...DEFAULT_SETTINGS };
@@ -137,11 +138,16 @@ async function applyToNode(node: TextNode, result: TypographyResult): Promise<vo
   node.letterSpacing = { value: result.letterSpacing, unit: 'PIXELS' };
 }
 
-async function applyGroups(groups: DeduplicatedGroup[]): Promise<number> {
+async function applyGroups(groups: DeduplicatedGroup[], styledNodeIds: Set<string>): Promise<number> {
   let applied = 0;
 
   for (const group of groups) {
     for (const nodeId of group.nodeIds) {
+      // Skip nodes whose style was already updated — they inherit new values
+      if (styledNodeIds.has(nodeId)) {
+        applied++;
+        continue;
+      }
       try {
         const node = figma.getNodeById(nodeId);
         if (node && node.type === 'TEXT') {
@@ -155,6 +161,107 @@ async function applyGroups(groups: DeduplicatedGroup[]): Promise<number> {
   }
 
   return applied;
+}
+
+// --- Style update + changelog ---
+
+interface StyleChange {
+  styleName: string;
+  before: { lineHeight: string; letterSpacing: string };
+  after: { lineHeight: string; letterSpacing: string };
+}
+
+function describeStyleLineHeight(style: TextStyle): string {
+  const lh = style.lineHeight as LineHeight;
+  if (typeof lh === 'symbol') return 'auto';
+  if ('unit' in lh) {
+    if (lh.unit === 'AUTO') return 'auto';
+    if (lh.unit === 'PERCENT') return `${Math.round(lh.value * 10) / 10}%`;
+    return `${Math.round(lh.value * 100) / 100}px`;
+  }
+  return 'auto';
+}
+
+function describeStyleLetterSpacing(style: TextStyle): string {
+  const ls = style.letterSpacing as LetterSpacing;
+  if (typeof ls === 'symbol') return '0';
+  if ('unit' in ls) {
+    if (ls.unit === 'PERCENT') return `${Math.round(ls.value * 10) / 10}%`;
+    return `${Math.round(ls.value * 100) / 100}px`;
+  }
+  return '0';
+}
+
+interface StyleUpdateResult {
+  changes: StyleChange[];
+  styledNodeIds: Set<string>;
+}
+
+async function updateTextStyles(groups: DeduplicatedGroup[]): Promise<StyleUpdateResult> {
+  const changes: StyleChange[] = [];
+  const updatedStyleIds = new Set<string>();
+  const styledNodeIds = new Set<string>();
+
+  for (const group of groups) {
+    for (const nodeId of group.nodeIds) {
+      try {
+        const node = figma.getNodeById(nodeId);
+        if (!node || node.type !== 'TEXT') continue;
+
+        const textNode = node as TextNode;
+        const styleId = textNode.textStyleId;
+        if (typeof styleId === 'symbol' || !styleId) continue; // mixed or no style
+
+        // This node is covered by a style — mark it so applyGroups skips it
+        styledNodeIds.add(nodeId);
+
+        if (updatedStyleIds.has(styleId)) continue; // style already updated
+
+        const style = figma.getStyleById(styleId);
+        if (!style || style.type !== 'TEXT') continue;
+
+        const textStyle = style as TextStyle;
+        const beforeLH = describeStyleLineHeight(textStyle);
+        const beforeLS = describeStyleLetterSpacing(textStyle);
+
+        // Load font before modifying style
+        const fontName = textStyle.fontName;
+        if (fontName) {
+          await figma.loadFontAsync(fontName);
+        }
+
+        textStyle.lineHeight = { value: group.result.lineHeightPercent, unit: 'PERCENT' };
+        textStyle.letterSpacing = { value: group.result.letterSpacing, unit: 'PIXELS' };
+        updatedStyleIds.add(styleId);
+
+        changes.push({
+          styleName: textStyle.name,
+          before: { lineHeight: beforeLH, letterSpacing: beforeLS },
+          after: {
+            lineHeight: `${group.result.lineHeightPercent}%`,
+            letterSpacing: `${group.result.letterSpacing}px`,
+          },
+        });
+      } catch (_) {
+        // skip
+      }
+    }
+  }
+
+  return { changes, styledNodeIds };
+}
+
+function formatChangelog(changes: StyleChange[]): string {
+  if (changes.length === 0) return '';
+  const date = new Date().toISOString().slice(0, 10);
+  const lines = [`## FineTune changelog — ${date}\n`];
+  for (const c of changes) {
+    lines.push(`### ${c.styleName}`);
+    lines.push(`- Line-height: ${c.before.lineHeight} → ${c.after.lineHeight}`);
+    lines.push(`- Letter-spacing: ${c.before.letterSpacing} → ${c.after.letterSpacing}`);
+    lines.push('');
+  }
+  return lines.join('\n');
 }
 
 // --- Dedup key for unique font configurations ---
@@ -257,53 +364,36 @@ function processSelection(): void {
   sendGroupsToUI(groups, textNodes.length, false);
 }
 
-async function processAndApply(textNodes: TextNode[]): Promise<number> {
+async function processAndApply(textNodes: TextNode[]): Promise<{ applied: number; styleChanges: StyleChange[] }> {
   // 1. Compute groups BEFORE applying — captures original "before" values
   const groups = computeGroups(textNodes);
 
   // 2. Send preview to UI with correct before/after
   sendGroupsToUI(groups, textNodes.length, true);
 
-  // 3. Apply values to all nodes
-  const applied = await applyGroups(groups);
-  return applied;
-}
+  // 3. Update text styles FIRST if enabled (so styled nodes keep their binding)
+  let styleChanges: StyleChange[] = [];
+  let styledNodeIds = new Set<string>();
 
-// --- Process all text on page ---
+  if (settings.updateStyles) {
+    const result = await updateTextStyles(groups);
+    styleChanges = result.changes;
+    styledNodeIds = result.styledNodeIds;
 
-function processPage(): void {
-  const allText = collectTextNodes(figma.currentPage.children);
-  if (allText.length === 0) {
-    figma.ui.postMessage({ type: 'no-text-on-page' });
-    return;
+    if (styleChanges.length > 0) {
+      const changelog = formatChangelog(styleChanges);
+      figma.ui.postMessage({
+        type: 'style-changelog',
+        changelog,
+        changes: styleChanges,
+      });
+    }
   }
 
-  // Temporarily set selection to all text nodes and process
-  const results: Array<{ nodeId: string; result: TypographyResult }> = [];
+  // 4. Apply to nodes (skips styled nodes — they already inherited from the style)
+  const applied = await applyGroups(groups, styledNodeIds);
 
-  for (const node of allText) {
-    const info = analyzeTextNode(node);
-    if (!info) continue;
-
-    const input: TypographyInput = {
-      fontFamily: info.fontFamily,
-      fontSize: info.fontSize,
-      fontWeight: info.fontWeight,
-      fontStyle: info.fontStyle,
-      isUppercase: info.isUppercase,
-      isDarkBg: info.isDarkBg,
-    };
-
-    results.push({
-      nodeId: node.id,
-      result: calculate(input, settings.contextOverride, settings.gridStep),
-    });
-  }
-
-  figma.ui.postMessage({
-    type: 'page-scan-results',
-    count: results.length,
-  });
+  return { applied, styleChanges };
 }
 
 // --- Message handler ---
@@ -324,15 +414,12 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
 
     case 'apply-selected': {
       const textNodes = collectTextNodes(figma.currentPage.selection);
-      const applied = await processAndApply(textNodes);
-      figma.notify(`FineTune: applied to ${applied} text layer${applied !== 1 ? 's' : ''}`);
-      break;
-    }
-
-    case 'apply-page': {
-      const textNodes = collectTextNodes(figma.currentPage.children);
-      const applied = await processAndApply(textNodes);
-      figma.notify(`FineTune: applied to ${applied} text layer${applied !== 1 ? 's' : ''} on page`);
+      const { applied, styleChanges } = await processAndApply(textNodes);
+      const parts = [`${applied} layer${applied !== 1 ? 's' : ''}`];
+      if (styleChanges.length > 0) {
+        parts.push(`${styleChanges.length} style${styleChanges.length !== 1 ? 's' : ''} updated`);
+      }
+      figma.notify(`FineTune: ${parts.join(', ')}`);
       break;
     }
 
@@ -376,7 +463,6 @@ figma.on('selectionchange', async () => {
   }
 
   if (settings.autoApply) {
-    // Compute groups first (captures "before"), send to UI, then apply
     await processAndApply(textNodes);
   } else {
     processSelection();

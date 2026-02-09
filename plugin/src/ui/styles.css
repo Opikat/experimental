@@ -299,11 +299,62 @@ select:focus {
   gap: 4px;
 }
 
+.setting-details {
+  padding-left: 18px;
+}
+
+.setting-details summary {
+  font-size: 10px;
+  color: var(--figma-color-text-tertiary, #b3b3b3);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.setting-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.setting-details summary::before {
+  content: '+ ';
+}
+
+.setting-details[open] summary::before {
+  content: '- ';
+}
+
 .setting-hint {
   font-size: 10px;
   color: var(--figma-color-text-tertiary, #b3b3b3);
   line-height: 1.4;
-  padding-left: 18px;
+  margin-top: 2px;
+}
+
+/* --- Changelog --- */
+.changelog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.changelog-item {
+  background: var(--figma-color-bg-secondary, #f5f5f5);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.changelog-name {
+  font-size: 11px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.changelog-diff {
+  font-size: 10px;
+  color: var(--figma-color-text-secondary, #888);
+  font-variant-numeric: tabular-nums;
 }
 
 /* --- Empty state --- */

@@ -42,6 +42,7 @@ export interface PluginSettings {
   contextOverride: TextContext | 'auto';
   autoApply: boolean;
   writeVariables: boolean;
+  updateStyles: boolean;
 }
 
 export interface PluginMessage {
