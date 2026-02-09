@@ -41,6 +41,39 @@ In Figma: **Plugins** > **Development** > **Import plugin from manifest** > sele
 | Body | 14-31px | ~140% |
 | Caption | ≤13px | ~155% |
 
+Line-height is snapped to the nearest 4px grid step for vertical rhythm.
+
+## Letter-spacing (tracking) formula
+
+Letter-spacing is calculated as a sum of five factors, each in em:
+
+```
+tracking = baseRatio + sizeScale + displayAdj + weightAdj + caseAdj + bgAdj
+px value = fontSize * tracking
+```
+
+| Factor | What it does | Range |
+|--------|-------------|-------|
+| **baseRatio** | Per-font base tracking (from font profile) | -0.01 .. 0.01 em |
+| **sizeScale** | Small text gets looser, large text tighter | +0.008 em at ≤12px, 0 at 14-24px, down to -0.03 em at 96px+ |
+| **displayAdj** | Extra tightening for display context (≥32px) | -0.015 .. -0.03 em (per font) |
+| **weightAdj** | Heavier weights → tighter tracking | interpolated from font profile per-weight table |
+| **caseAdj** | Uppercase boost | +0.04 .. 0.07 em (per font) |
+| **bgAdj** | Dark background → slightly looser | +0.015 em on dark, 0 on light |
+
+Example: Inter Medium 48px, lowercase, dark background:
+
+```
+base    =  0.000
+size    = -0.010  (48px: full tightening in 24-48 range)
+display = -0.022  (Inter's displayTightening)
+weight  = -0.002  (Medium w500)
+case    =  0.000  (lowercase)
+bg      = +0.015  (dark)
+─────────────────
+total   = -0.019 em → -0.91px
+```
+
 ## Settings
 
 - **Auto-apply on selection change** — optimized values are immediately applied to every text layer you select. Disable to preview first.
