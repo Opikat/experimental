@@ -29,14 +29,14 @@ const DEFAULT_SETTINGS: PluginSettings = {
 let settings: PluginSettings = { ...DEFAULT_SETTINGS };
 
 async function loadSettings(): Promise<void> {
-  const saved = await figma.clientStorage.getAsync('typetune-settings');
+  const saved = await figma.clientStorage.getAsync('finetune-settings');
   if (saved) {
     settings = { ...DEFAULT_SETTINGS, ...saved };
   }
 }
 
 async function saveSettings(): Promise<void> {
-  await figma.clientStorage.setAsync('typetune-settings', settings);
+  await figma.clientStorage.setAsync('finetune-settings', settings);
 }
 
 // --- Text node analysis ---
@@ -325,14 +325,14 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
     case 'apply-selected': {
       const textNodes = collectTextNodes(figma.currentPage.selection);
       const applied = await processAndApply(textNodes);
-      figma.notify(`TypeTune: applied to ${applied} text layer${applied !== 1 ? 's' : ''}`);
+      figma.notify(`FineTune: applied to ${applied} text layer${applied !== 1 ? 's' : ''}`);
       break;
     }
 
     case 'apply-page': {
       const textNodes = collectTextNodes(figma.currentPage.children);
       const applied = await processAndApply(textNodes);
-      figma.notify(`TypeTune: applied to ${applied} text layer${applied !== 1 ? 's' : ''} on page`);
+      figma.notify(`FineTune: applied to ${applied} text layer${applied !== 1 ? 's' : ''} on page`);
       break;
     }
 

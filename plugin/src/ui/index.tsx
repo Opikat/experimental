@@ -290,7 +290,7 @@ function App() {
             <label for="writeVariables">Save to Figma Variables</label>
           </div>
           <div class="setting-hint">
-            Creates a "TypeTune" variable collection with line-height
+            Creates a "FineTune" variable collection with line-height
             and letter-spacing values for each text style. Useful for
             design systems — developers can read these variables directly.
             Includes Light and Dark mode variants.
