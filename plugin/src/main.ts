@@ -138,11 +138,16 @@ async function applyToNode(node: TextNode, result: TypographyResult): Promise<vo
   node.letterSpacing = { value: result.letterSpacing, unit: 'PIXELS' };
 }
 
-async function applyGroups(groups: DeduplicatedGroup[]): Promise<number> {
+async function applyGroups(groups: DeduplicatedGroup[], styledNodeIds: Set<string>): Promise<number> {
   let applied = 0;
 
   for (const group of groups) {
     for (const nodeId of group.nodeIds) {
+      // Skip nodes whose style was already updated — they inherit new values
+      if (styledNodeIds.has(nodeId)) {
+        applied++;
+        continue;
+      }
       try {
         const node = figma.getNodeById(nodeId);
         if (node && node.type === 'TEXT') {
@@ -187,9 +192,15 @@ function describeStyleLetterSpacing(style: TextStyle): string {
   return '0';
 }
 
-async function updateTextStyles(groups: DeduplicatedGroup[]): Promise<StyleChange[]> {
+interface StyleUpdateResult {
+  changes: StyleChange[];
+  styledNodeIds: Set<string>;
+}
+
+async function updateTextStyles(groups: DeduplicatedGroup[]): Promise<StyleUpdateResult> {
   const changes: StyleChange[] = [];
   const updatedStyleIds = new Set<string>();
+  const styledNodeIds = new Set<string>();
 
   for (const group of groups) {
     for (const nodeId of group.nodeIds) {
@@ -200,7 +211,11 @@ async function updateTextStyles(groups: DeduplicatedGroup[]): Promise<StyleChang
         const textNode = node as TextNode;
         const styleId = textNode.textStyleId;
         if (typeof styleId === 'symbol' || !styleId) continue; // mixed or no style
-        if (updatedStyleIds.has(styleId)) continue; // already updated
+
+        // This node is covered by a style — mark it so applyGroups skips it
+        styledNodeIds.add(nodeId);
+
+        if (updatedStyleIds.has(styleId)) continue; // style already updated
 
         const style = figma.getStyleById(styleId);
         if (!style || style.type !== 'TEXT') continue;
@@ -233,7 +248,7 @@ async function updateTextStyles(groups: DeduplicatedGroup[]): Promise<StyleChang
     }
   }
 
-  return changes;
+  return { changes, styledNodeIds };
 }
 
 function formatChangelog(changes: StyleChange[]): string {
@@ -356,13 +371,15 @@ async function processAndApply(textNodes: TextNode[]): Promise<{ applied: number
   // 2. Send preview to UI with correct before/after
   sendGroupsToUI(groups, textNodes.length, true);
 
-  // 3. Apply values to all nodes
-  const applied = await applyGroups(groups);
-
-  // 4. Update text styles if enabled
+  // 3. Update text styles FIRST if enabled (so styled nodes keep their binding)
   let styleChanges: StyleChange[] = [];
+  let styledNodeIds = new Set<string>();
+
   if (settings.updateStyles) {
-    styleChanges = await updateTextStyles(groups);
+    const result = await updateTextStyles(groups);
+    styleChanges = result.changes;
+    styledNodeIds = result.styledNodeIds;
+
     if (styleChanges.length > 0) {
       const changelog = formatChangelog(styleChanges);
       figma.ui.postMessage({
@@ -372,6 +389,9 @@ async function processAndApply(textNodes: TextNode[]): Promise<{ applied: number
       });
     }
   }
+
+  // 4. Apply to nodes (skips styled nodes — they already inherited from the style)
+  const applied = await applyGroups(groups, styledNodeIds);
 
   return { applied, styleChanges };
 }
