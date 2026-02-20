@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS: PluginSettings = {
 };
 
 let settings: PluginSettings = { ...DEFAULT_SETTINGS };
+let lastGroups: DeduplicatedGroup[] = [];
 
 async function loadSettings(): Promise<void> {
   const saved = await figma.clientStorage.getAsync('finetune-settings');
@@ -372,6 +373,7 @@ function computeGroups(textNodes: TextNode[]): DeduplicatedGroup[] {
 }
 
 function sendGroupsToUI(groups: DeduplicatedGroup[], totalLayers: number, applied: boolean): void {
+  lastGroups = groups;
   figma.ui.postMessage({
     type: 'calculation-results',
     results: groups.map(g => ({
@@ -482,24 +484,11 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
 
     case 'export-code': {
       const { nodeId, format } = msg as { nodeId: string; format: ExportFormat; type: string };
-      const node = figma.getNodeById(nodeId);
-      if (!node || node.type !== 'TEXT') break;
+      // Find group by nodeId from cached groups (avoids getNodeById which fails with dynamic-page)
+      const group = lastGroups.find(function(g) { return g.nodeIds.indexOf(nodeId) !== -1; });
+      if (!group) break;
 
-      const info = analyzeTextNode(node as TextNode);
-      if (!info) break;
-
-      const input: TypographyInput = {
-        fontFamily: info.fontFamily,
-        fontSize: info.fontSize,
-        fontWeight: info.fontWeight,
-        fontStyle: info.fontStyle,
-        isUppercase: info.isUppercase,
-        isDarkBg: info.isDarkBg,
-      };
-
-      const result = calculate(input, settings.contextOverride, settings.gridStep);
-      const code = exportCode(result, info.fontSize, format);
-
+      const code = exportCode(group.result, group.info.fontSize, format);
       figma.ui.postMessage({ type: 'export-result', code, format });
       break;
     }
