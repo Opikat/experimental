@@ -56,6 +56,8 @@ function App() {
     gridStep: 4,
   });
   const [showHelp, setShowHelp] = useState(false);
+  const [showLog, setShowLog] = useState(false);
+  const [showGood, setShowGood] = useState(false);
   const [results, setResults] = useState<ResultEntry[]>([]);
   const [totalLayers, setTotalLayers] = useState(0);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('css');
@@ -138,11 +140,7 @@ function App() {
     const r = results[selectedExportIdx];
     if (r) {
       parent.postMessage({
-        pluginMessage: {
-          type: 'export-code',
-          nodeId: r.nodeId,
-          format,
-        },
+        pluginMessage: { type: 'export-code', nodeId: r.nodeId, format },
       }, '*');
     }
   };
@@ -152,11 +150,7 @@ function App() {
     const r = results[idx];
     if (r) {
       parent.postMessage({
-        pluginMessage: {
-          type: 'export-code',
-          nodeId: r.nodeId,
-          format: exportFormat,
-        },
+        pluginMessage: { type: 'export-code', nodeId: r.nodeId, format: exportFormat },
       }, '*');
     }
   };
@@ -169,82 +163,84 @@ function App() {
     }
   };
 
+  // Split results into fixable and well-tuned
+  const fixable: Array<{ r: ResultEntry; idx: number }> = [];
+  const good: Array<{ r: ResultEntry; idx: number }> = [];
+  results.forEach((r, idx) => {
+    if (r.isAlreadyGood) good.push({ r, idx });
+    else fixable.push({ r, idx });
+  });
+
+  const renderCard = (r: ResultEntry, idx: number) => (
+    <div
+      key={r.nodeId}
+      class={`result-card${results.length > 1 && idx === selectedExportIdx ? ' result-card-selected' : ''}${r.isAlreadyGood ? ' result-card-good' : ''}`}
+      onClick={() => results.length > 1 && handleSelectExport(idx)}
+    >
+      <div class="font-info">
+        <span class="font-info-name">{r.fontInfo}</span>
+        <span class="font-info-badges">
+          {r.count > 1 && <span class="count-badge">{r.count}x</span>}
+          {r.isAlreadyGood && <span class="good-badge">good</span>}
+          {r.isApproximate && !r.isAlreadyGood && <span class="approximate-badge">approx</span>}
+        </span>
+      </div>
+      {r.isAlreadyGood ? (
+        <>
+          <div class="result-row">
+            <span class="result-label">Line-height</span>
+            <span class="result-value">{r.before.lineHeight}</span>
+          </div>
+          <div class="result-row">
+            <span class="result-label">Letter-spacing</span>
+            <span class="result-value">{r.before.letterSpacing}</span>
+          </div>
+        </>
+      ) : (
+        <>
+          <div class="result-row">
+            <span class="result-label">Line-height</span>
+            <span>
+              <span class="result-value">{r.after.lineHeight}px</span>
+              <span class="result-secondary"> ({r.after.lineHeightPercent}%)</span>
+              <span class="result-prev">{r.before.lineHeight}</span>
+            </span>
+          </div>
+          <div class="result-row">
+            <span class="result-label">Letter-spacing</span>
+            <span>
+              <span class="result-value">{r.after.letterSpacing}px</span>
+              <span class="result-secondary"> ({r.after.letterSpacingPercent}%)</span>
+              <span class="result-prev">{r.before.letterSpacing}</span>
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <>
-      {/* Results */}
-      {!hasSelection ? (
-        <div class="empty-state">
-          <div class="empty-state-icon">Aa</div>
-          <div class="empty-state-text">
-            Select text layers to optimize<br />
-            line-height and letter-spacing
-          </div>
-        </div>
-      ) : results.length === 0 ? (
-        <div class="empty-state">
-          <div class="empty-state-icon">...</div>
-          <div class="empty-state-text">
-            No text layers in selection
-          </div>
-        </div>
-      ) : (() => {
-        const fixable: Array<{ r: ResultEntry; idx: number }> = [];
-        const good: Array<{ r: ResultEntry; idx: number }> = [];
-        results.forEach((r, idx) => {
-          if (r.isAlreadyGood) good.push({ r, idx });
-          else fixable.push({ r, idx });
-        });
-
-        const renderCard = (r: ResultEntry, idx: number) => (
-          <div
-            key={r.nodeId}
-            class={`result-card${results.length > 1 && idx === selectedExportIdx ? ' result-card-selected' : ''}${r.isAlreadyGood ? ' result-card-good' : ''}`}
-            onClick={() => results.length > 1 && handleSelectExport(idx)}
-          >
-            <div class="font-info">
-              <span class="font-info-name">{r.fontInfo}</span>
-              <span class="font-info-badges">
-                {r.count > 1 && <span class="count-badge">{r.count}x</span>}
-                {r.isAlreadyGood && <span class="good-badge">good</span>}
-                {r.isApproximate && !r.isAlreadyGood && <span class="approximate-badge">approx</span>}
-              </span>
+      {/* === Scrollable main area === */}
+      <div class="main-scroll">
+        {!hasSelection ? (
+          <div class="empty-state">
+            <div class="empty-state-icon">Aa</div>
+            <div class="empty-state-text">
+              Select text layers to optimize<br />
+              line-height and letter-spacing
             </div>
-            {r.isAlreadyGood ? (
-              <>
-                <div class="result-row">
-                  <span class="result-label">Line-height</span>
-                  <span class="result-value">{r.before.lineHeight}</span>
-                </div>
-                <div class="result-row">
-                  <span class="result-label">Letter-spacing</span>
-                  <span class="result-value">{r.before.letterSpacing}</span>
-                </div>
-              </>
-            ) : (
-              <>
-                <div class="result-row">
-                  <span class="result-label">Line-height</span>
-                  <span>
-                    <span class="result-value">{r.after.lineHeight}px</span>
-                    <span class="result-secondary"> ({r.after.lineHeightPercent}%)</span>
-                    <span class="result-prev">{r.before.lineHeight}</span>
-                  </span>
-                </div>
-                <div class="result-row">
-                  <span class="result-label">Letter-spacing</span>
-                  <span>
-                    <span class="result-value">{r.after.letterSpacing}px</span>
-                    <span class="result-secondary"> ({r.after.letterSpacingPercent}%)</span>
-                    <span class="result-prev">{r.before.letterSpacing}</span>
-                  </span>
-                </div>
-              </>
-            )}
           </div>
-        );
-
-        return (
+        ) : results.length === 0 ? (
+          <div class="empty-state">
+            <div class="empty-state-icon">...</div>
+            <div class="empty-state-text">
+              No text layers in selection
+            </div>
+          </div>
+        ) : (
           <>
+            {/* Results */}
             <div class="section">
               <div class="section-title">
                 {results.length === 1
@@ -254,50 +250,37 @@ function App() {
               <div class="results-list">
                 {fixable.map(({ r, idx }) => renderCard(r, idx))}
               </div>
+
+              {/* Collapsible good section */}
               {good.length > 0 && (
                 <>
-                  {fixable.length > 0 && (
-                    <div class="subsection-title">Well-tuned</div>
+                  <button
+                    class="good-toggle"
+                    onClick={() => setShowGood(!showGood)}
+                  >
+                    <span>{good.length} well-tuned style{good.length !== 1 ? 's' : ''}</span>
+                    <span class={`good-toggle-arrow${showGood ? ' open' : ''}`}>&#9654;</span>
+                  </button>
+                  {showGood && (
+                    <div class="results-list">
+                      {good.map(({ r, idx }) => renderCard(r, idx))}
+                    </div>
                   )}
-                  <div class="results-list">
-                    {good.map(({ r, idx }) => renderCard(r, idx))}
-                  </div>
                 </>
               )}
             </div>
 
-            {/* Apply button */}
-            <button class="btn btn-primary" onClick={handleApplySelected}>
-              Apply to selected
-            </button>
-
-            {/* Changelog */}
-            {styleChanges.length > 0 && (
-              <>
-                <div class="divider" />
-                <div class="section">
-                  <div class="section-title">
-                    Changelog ({styleChanges.length} change{styleChanges.length !== 1 ? 's' : ''})
-                  </div>
-                  <div class="changelog-list">
-                    {styleChanges.map(c => (
-                      <div class="changelog-item" key={c.styleName}>
-                        <div class="changelog-name">{c.styleName}</div>
-                        <div class="changelog-diff">
-                          LH: {c.before.lineHeight} → {c.after.lineHeight}
-                        </div>
-                        <div class="changelog-diff">
-                          LS: {c.before.letterSpacing} → {c.after.letterSpacing}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <button class="btn btn-secondary" onClick={handleCopyChangelog}>
-                    {copiedChangelog ? 'Copied!' : 'Copy changelog (markdown)'}
-                  </button>
-                </div>
-              </>
-            )}
+            {/* Apply button + log badge */}
+            <div class="apply-row">
+              <button class="btn btn-primary" onClick={handleApplySelected}>
+                Apply to selected
+              </button>
+              {styleChanges.length > 0 && (
+                <button class="log-badge" onClick={() => setShowLog(true)}>
+                  Log ({styleChanges.length})
+                </button>
+              )}
+            </div>
 
             <div class="divider" />
 
@@ -337,59 +320,36 @@ function App() {
               )}
             </div>
           </>
-        );
-      })()}
+        )}
+      </div>
 
-      <div class="divider" />
-
-      {/* Settings */}
-      <div class="section">
-        <div class="section-title">Settings</div>
-
-        <div class="setting-item">
+      {/* === Settings pinned to bottom === */}
+      <div class="bottom-bar">
+        <div class="settings-grid">
           <div class="checkbox-row">
-            <input
-              type="checkbox"
-              id="autoApply"
-              checked={settings.autoApply}
-              onChange={(e) => updateSetting('autoApply', (e.target as HTMLInputElement).checked)}
-            />
+            <input type="checkbox" id="autoApply" checked={settings.autoApply}
+              onChange={(e) => updateSetting('autoApply', (e.target as HTMLInputElement).checked)} />
             <label for="autoApply">Auto-apply on selection change</label>
           </div>
-        </div>
-
-        <div class="setting-item">
           <div class="checkbox-row">
-            <input
-              type="checkbox"
-              id="updateStyles"
-              checked={settings.updateStyles}
-              onChange={(e) => updateSetting('updateStyles', (e.target as HTMLInputElement).checked)}
-            />
+            <input type="checkbox" id="updateStyles" checked={settings.updateStyles}
+              onChange={(e) => updateSetting('updateStyles', (e.target as HTMLInputElement).checked)} />
             <label for="updateStyles">Update text styles</label>
           </div>
-        </div>
-
-        <div class="setting-item">
           <div class="checkbox-row">
-            <input
-              type="checkbox"
-              id="writeVariables"
-              checked={settings.writeVariables}
-              onChange={(e) => updateSetting('writeVariables', (e.target as HTMLInputElement).checked)}
-            />
+            <input type="checkbox" id="writeVariables" checked={settings.writeVariables}
+              onChange={(e) => updateSetting('writeVariables', (e.target as HTMLInputElement).checked)} />
             <label for="writeVariables">Save to Figma Variables</label>
           </div>
         </div>
-
-        <div class="setting-item">
-          <label class="setting-label">Pixel grid</label>
-          <div class="grid-options">
+        <div class="settings-row">
+          <span class="settings-row-label">Pixel grid</span>
+          <div class="grid-options" style="flex: 0 0 auto; width: 160px">
             {[
               { value: 1, label: 'Off' },
-              { value: 2, label: '2px' },
-              { value: 4, label: '4px' },
-              { value: 8, label: '8px' },
+              { value: 2, label: '2' },
+              { value: 4, label: '4' },
+              { value: 8, label: '8' },
             ].map(opt => (
               <button
                 key={opt.value}
@@ -401,13 +361,45 @@ function App() {
             ))}
           </div>
         </div>
-
         <button class="help-link" onClick={() => setShowHelp(true)}>
           How do these settings work?
         </button>
       </div>
 
-      {/* Help modal */}
+      {/* === Log side panel === */}
+      {showLog && styleChanges.length > 0 && (
+        <>
+          <div class="log-overlay" onClick={() => setShowLog(false)} />
+          <div class="log-panel">
+            <div class="log-panel-header">
+              <span class="log-panel-title">Changelog</span>
+              <div class="log-panel-actions">
+                <button class="log-panel-btn" onClick={handleCopyChangelog}>
+                  {copiedChangelog ? 'Copied!' : 'Copy'}
+                </button>
+                <button class="log-panel-close" onClick={() => setShowLog(false)}>
+                  &times;
+                </button>
+              </div>
+            </div>
+            <div class="log-panel-body">
+              {styleChanges.map(c => (
+                <div class="changelog-item" key={c.styleName}>
+                  <div class="changelog-name">{c.styleName}</div>
+                  <div class="changelog-diff">
+                    LH: {c.before.lineHeight} → {c.after.lineHeight}
+                  </div>
+                  <div class="changelog-diff">
+                    LS: {c.before.letterSpacing} → {c.after.letterSpacing}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* === Help modal === */}
       {showHelp && (
         <div class="modal-overlay" onClick={() => setShowHelp(false)}>
           <div class="modal" onClick={(e) => e.stopPropagation()}>
