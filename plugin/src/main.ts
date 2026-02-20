@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS: PluginSettings = {
 };
 
 let settings: PluginSettings = { ...DEFAULT_SETTINGS };
+let lastGroups: DeduplicatedGroup[] = [];
 
 async function loadSettings(): Promise<void> {
   const saved = await figma.clientStorage.getAsync('finetune-settings');
@@ -52,6 +53,8 @@ interface TextLayerInfo {
   isDarkBg: boolean;
   currentLineHeight: string;
   currentLetterSpacing: string;
+  currentLineHeightPx: number;
+  currentLetterSpacingPx: number;
 }
 
 function weightFromStyle(style: string): number {
@@ -88,6 +91,29 @@ function describeLetterSpacing(node: TextNode): string {
   return '0';
 }
 
+function getLineHeightPx(node: TextNode): number {
+  const lh = node.lineHeight as LineHeight;
+  const fs = (typeof node.fontSize === 'symbol') ? 16 : node.fontSize as number;
+  if (typeof lh === 'symbol') return fs * 1.2; // mixed → assume default
+  if ('unit' in lh) {
+    if (lh.unit === 'AUTO') return fs * 1.2; // Figma auto ≈ 120%
+    if (lh.unit === 'PERCENT') return fs * lh.value / 100;
+    return lh.value; // PIXELS
+  }
+  return fs * 1.2;
+}
+
+function getLetterSpacingPx(node: TextNode): number {
+  const ls = node.letterSpacing as LetterSpacing;
+  const fs = (typeof node.fontSize === 'symbol') ? 16 : node.fontSize as number;
+  if (typeof ls === 'symbol') return 0;
+  if ('unit' in ls) {
+    if (ls.unit === 'PERCENT') return fs * ls.value / 100;
+    return ls.value; // PIXELS
+  }
+  return 0;
+}
+
 function analyzeTextNode(node: TextNode): TextLayerInfo | null {
   const fontName = node.fontName;
   if (typeof fontName === 'symbol') return null; // mixed fonts
@@ -110,6 +136,8 @@ function analyzeTextNode(node: TextNode): TextLayerInfo | null {
     isDarkBg: darkBg,
     currentLineHeight: describeLineHeight(node),
     currentLetterSpacing: describeLetterSpacing(node),
+    currentLineHeightPx: getLineHeightPx(node),
+    currentLetterSpacingPx: getLetterSpacingPx(node),
   };
 }
 
@@ -142,20 +170,20 @@ async function applyGroups(groups: DeduplicatedGroup[], styledNodeIds: Set<strin
   let applied = 0;
 
   for (const group of groups) {
-    for (const nodeId of group.nodeIds) {
+    // Skip groups that are already within tolerance
+    if (group.isAlreadyGood) continue;
+
+    for (const node of group.nodes) {
       // Skip nodes whose style was already updated — they inherit new values
-      if (styledNodeIds.has(nodeId)) {
+      if (styledNodeIds.has(node.id)) {
         applied++;
         continue;
       }
       try {
-        const node = figma.getNodeById(nodeId);
-        if (node && node.type === 'TEXT') {
-          await applyToNode(node, group.result);
-          applied++;
-        }
+        await applyToNode(node, group.result);
+        applied++;
       } catch (e) {
-        console.error('[FineTune] applyGroups failed for node', nodeId, e);
+        console.error('[FineTune] applyGroups failed for node', node.id, e);
       }
     }
   }
@@ -203,12 +231,9 @@ async function updateTextStyles(groups: DeduplicatedGroup[]): Promise<StyleUpdat
   const styledNodeIds = new Set<string>();
 
   for (const group of groups) {
-    for (const nodeId of group.nodeIds) {
+    for (const textNode of group.nodes) {
+      const nodeId = textNode.id;
       try {
-        const node = figma.getNodeById(nodeId);
-        if (!node || node.type !== 'TEXT') continue;
-
-        const textNode = node as TextNode;
         const styleId = textNode.textStyleId;
         if (typeof styleId === 'symbol' || !styleId) continue; // mixed or no style
 
@@ -280,7 +305,27 @@ interface DeduplicatedGroup {
   info: TextLayerInfo;
   result: TypographyResult;
   nodeIds: string[];
+  nodes: TextNode[];
   count: number;
+  isAlreadyGood: boolean;
+}
+
+function checkAlreadyGood(info: TextLayerInfo, result: TypographyResult): boolean {
+  const lhTarget = result.lineHeight;
+  const lsTarget = result.letterSpacing;
+  const lhCurrent = info.currentLineHeightPx;
+  const lsCurrent = info.currentLetterSpacingPx;
+
+  // Line-height: within 5% of target
+  const lhOk = lhTarget > 0
+    ? Math.abs(lhCurrent - lhTarget) / lhTarget <= 0.05
+    : Math.abs(lhCurrent - lhTarget) < 0.5;
+
+  // Letter-spacing: within 5% or ±0.2px for small values
+  const lsThreshold = Math.max(0.2, Math.abs(lsTarget) * 0.05);
+  const lsOk = Math.abs(lsCurrent - lsTarget) <= lsThreshold;
+
+  return lhOk && lsOk;
 }
 
 function computeGroups(textNodes: TextNode[]): DeduplicatedGroup[] {
@@ -295,6 +340,7 @@ function computeGroups(textNodes: TextNode[]): DeduplicatedGroup[] {
 
     if (existing) {
       existing.nodeIds.push(info.nodeId);
+      existing.nodes.push(node);
       existing.count++;
       continue;
     }
@@ -314,7 +360,9 @@ function computeGroups(textNodes: TextNode[]): DeduplicatedGroup[] {
       info,
       result,
       nodeIds: [info.nodeId],
+      nodes: [node],
       count: 1,
+      isAlreadyGood: checkAlreadyGood(info, result),
     });
   }
 
@@ -325,6 +373,7 @@ function computeGroups(textNodes: TextNode[]): DeduplicatedGroup[] {
 }
 
 function sendGroupsToUI(groups: DeduplicatedGroup[], totalLayers: number, applied: boolean): void {
+  lastGroups = groups;
   figma.ui.postMessage({
     type: 'calculation-results',
     results: groups.map(g => ({
@@ -347,6 +396,7 @@ function sendGroupsToUI(groups: DeduplicatedGroup[], totalLayers: number, applie
         letterSpacingPercent: g.result.letterSpacingPercent,
       },
       fontSize: g.info.fontSize,
+      isAlreadyGood: g.isAlreadyGood,
     })),
     totalLayers,
     uniqueGroups: groups.length,
@@ -434,24 +484,11 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
 
     case 'export-code': {
       const { nodeId, format } = msg as { nodeId: string; format: ExportFormat; type: string };
-      const node = figma.getNodeById(nodeId);
-      if (!node || node.type !== 'TEXT') break;
+      // Find group by nodeId from cached groups (avoids getNodeById which fails with dynamic-page)
+      const group = lastGroups.find(function(g) { return g.nodeIds.indexOf(nodeId) !== -1; });
+      if (!group) break;
 
-      const info = analyzeTextNode(node as TextNode);
-      if (!info) break;
-
-      const input: TypographyInput = {
-        fontFamily: info.fontFamily,
-        fontSize: info.fontSize,
-        fontWeight: info.fontWeight,
-        fontStyle: info.fontStyle,
-        isUppercase: info.isUppercase,
-        isDarkBg: info.isDarkBg,
-      };
-
-      const result = calculate(input, settings.contextOverride, settings.gridStep);
-      const code = exportCode(result, info.fontSize, format);
-
+      const code = exportCode(group.result, group.info.fontSize, format);
       figma.ui.postMessage({ type: 'export-result', code, format });
       break;
     }
