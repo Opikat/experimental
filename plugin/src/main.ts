@@ -142,20 +142,17 @@ async function applyGroups(groups: DeduplicatedGroup[], styledNodeIds: Set<strin
   let applied = 0;
 
   for (const group of groups) {
-    for (const nodeId of group.nodeIds) {
+    for (const node of group.nodes) {
       // Skip nodes whose style was already updated — they inherit new values
-      if (styledNodeIds.has(nodeId)) {
+      if (styledNodeIds.has(node.id)) {
         applied++;
         continue;
       }
       try {
-        const node = figma.getNodeById(nodeId);
-        if (node && node.type === 'TEXT') {
-          await applyToNode(node, group.result);
-          applied++;
-        }
+        await applyToNode(node, group.result);
+        applied++;
       } catch (e) {
-        console.error('[FineTune] applyGroups failed for node', nodeId, e);
+        console.error('[FineTune] applyGroups failed for node', node.id, e);
       }
     }
   }
@@ -203,12 +200,9 @@ async function updateTextStyles(groups: DeduplicatedGroup[]): Promise<StyleUpdat
   const styledNodeIds = new Set<string>();
 
   for (const group of groups) {
-    for (const nodeId of group.nodeIds) {
+    for (const textNode of group.nodes) {
+      const nodeId = textNode.id;
       try {
-        const node = figma.getNodeById(nodeId);
-        if (!node || node.type !== 'TEXT') continue;
-
-        const textNode = node as TextNode;
         const styleId = textNode.textStyleId;
         if (typeof styleId === 'symbol' || !styleId) continue; // mixed or no style
 
@@ -280,6 +274,7 @@ interface DeduplicatedGroup {
   info: TextLayerInfo;
   result: TypographyResult;
   nodeIds: string[];
+  nodes: TextNode[];
   count: number;
 }
 
@@ -295,6 +290,7 @@ function computeGroups(textNodes: TextNode[]): DeduplicatedGroup[] {
 
     if (existing) {
       existing.nodeIds.push(info.nodeId);
+      existing.nodes.push(node);
       existing.count++;
       continue;
     }
@@ -314,6 +310,7 @@ function computeGroups(textNodes: TextNode[]): DeduplicatedGroup[] {
       info,
       result,
       nodeIds: [info.nodeId],
+      nodes: [node],
       count: 1,
     });
   }
