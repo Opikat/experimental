@@ -7,6 +7,7 @@ interface Settings {
   autoApply: boolean;
   writeVariables: boolean;
   updateStyles: boolean;
+  gridStep: number;
 }
 
 interface StyleChange {
@@ -52,7 +53,9 @@ function App() {
     autoApply: false,
     writeVariables: false,
     updateStyles: false,
+    gridStep: 4,
   });
+  const [showHelp, setShowHelp] = useState(false);
   const [results, setResults] = useState<ResultEntry[]>([]);
   const [totalLayers, setTotalLayers] = useState(0);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('css');
@@ -110,7 +113,7 @@ function App() {
     return () => window.removeEventListener('message', handler);
   }, [exportFormat]);
 
-  const updateSetting = (key: keyof Settings, value: boolean) => {
+  const updateSetting = (key: keyof Settings, value: boolean | number) => {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
     parent.postMessage({ pluginMessage: { type: 'update-settings', settings: { [key]: value } } }, '*');
@@ -337,14 +340,6 @@ function App() {
             />
             <label for="autoApply">Auto-apply on selection change</label>
           </div>
-          <details class="setting-details">
-            <summary>What does this do?</summary>
-            <div class="setting-hint">
-              Optimized values are immediately applied
-              to every text layer you select — no need to click "Apply".
-              Disable if you want to preview values first.
-            </div>
-          </details>
         </div>
 
         <div class="setting-item">
@@ -357,14 +352,6 @@ function App() {
             />
             <label for="updateStyles">Update text styles</label>
           </div>
-          <details class="setting-details">
-            <summary>What does this do?</summary>
-            <div class="setting-hint">
-              When a text layer uses a shared text style, the style itself
-              is updated — all instances across the file change automatically.
-              Shows a changelog for developers.
-            </div>
-          </details>
         </div>
 
         <div class="setting-item">
@@ -377,16 +364,73 @@ function App() {
             />
             <label for="writeVariables">Save to Figma Variables</label>
           </div>
-          <details class="setting-details">
-            <summary>What does this do?</summary>
-            <div class="setting-hint">
-              Creates a "FineTune" variable collection with line-height
-              and letter-spacing tokens. Developers can read these directly.
-              Includes Light and Dark mode variants.
-            </div>
-          </details>
         </div>
+
+        <div class="setting-item">
+          <label class="setting-label">Pixel grid</label>
+          <div class="grid-options">
+            {[
+              { value: 1, label: 'Off' },
+              { value: 2, label: '2px' },
+              { value: 4, label: '4px' },
+              { value: 8, label: '8px' },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                class={`grid-option${settings.gridStep === opt.value ? ' active' : ''}`}
+                onClick={() => updateSetting('gridStep', opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button class="help-link" onClick={() => setShowHelp(true)}>
+          How do these settings work?
+        </button>
       </div>
+
+      {/* Help modal */}
+      {showHelp && (
+        <div class="modal-overlay" onClick={() => setShowHelp(false)}>
+          <div class="modal" onClick={(e) => e.stopPropagation()}>
+            <div class="modal-header">
+              <span class="modal-title">Settings</span>
+              <button class="modal-close" onClick={() => setShowHelp(false)}>
+                &times;
+              </button>
+            </div>
+            <div class="modal-body">
+              <div class="help-item">
+                <div class="help-name">Auto-apply on selection change</div>
+                <div class="help-desc">
+                  Optimized values are immediately applied to every text layer you select — no need to click "Apply". Disable if you want to preview values first.
+                </div>
+              </div>
+              <div class="help-item">
+                <div class="help-name">Update text styles</div>
+                <div class="help-desc">
+                  When a text layer uses a shared text style, the style definition itself is updated — all instances across the file change automatically. A changelog is shown so you can track what changed.
+                </div>
+              </div>
+              <div class="help-item">
+                <div class="help-name">Save to Figma Variables</div>
+                <div class="help-desc">
+                  Creates a "FineTune" variable collection with line-height and letter-spacing tokens that developers can read directly. Includes Light and Dark mode variants.
+                </div>
+              </div>
+              <div class="help-item">
+                <div class="help-name">Pixel grid</div>
+                <div class="help-desc">
+                  Snaps line-height values to a pixel grid for sharper rendering and consistent vertical rhythm. For example, with a 4px grid, line-heights become 20, 24, 28px, etc.
+                  For small text (16px and below) the grid step is automatically halved to avoid too-large jumps. "Off" disables grid snapping and rounds to the nearest pixel.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
