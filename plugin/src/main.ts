@@ -212,13 +212,14 @@ async function updateTextStyles(groups: DeduplicatedGroup[]): Promise<StyleUpdat
         const styleId = textNode.textStyleId;
         if (typeof styleId === 'symbol' || !styleId) continue; // mixed or no style
 
-        // This node is covered by a style — mark it so applyGroups skips it
-        styledNodeIds.add(nodeId);
-
-        if (updatedStyleIds.has(styleId)) continue; // style already updated
+        // If this style was already updated, just mark node as styled
+        if (updatedStyleIds.has(styleId)) {
+          styledNodeIds.add(nodeId);
+          continue;
+        }
 
         const style = figma.getStyleById(styleId);
-        if (!style || style.type !== 'TEXT') continue;
+        if (!style || style.type !== 'TEXT') continue; // can't update — let applyGroups handle it
 
         const textStyle = style as TextStyle;
         const beforeLH = describeStyleLineHeight(textStyle);
@@ -233,6 +234,8 @@ async function updateTextStyles(groups: DeduplicatedGroup[]): Promise<StyleUpdat
         textStyle.lineHeight = { value: group.result.lineHeightPercent, unit: 'PERCENT' };
         textStyle.letterSpacing = { value: group.result.letterSpacing, unit: 'PIXELS' };
         updatedStyleIds.add(styleId);
+        // Only mark node as styled AFTER the style was successfully updated
+        styledNodeIds.add(nodeId);
 
         changes.push({
           styleName: textStyle.name,
