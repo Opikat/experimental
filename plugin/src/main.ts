@@ -154,8 +154,8 @@ async function applyGroups(groups: DeduplicatedGroup[], styledNodeIds: Set<strin
           await applyToNode(node, group.result);
           applied++;
         }
-      } catch (_) {
-        // skip nodes that fail (e.g. can't load font) — continue with the rest
+      } catch (e) {
+        console.error('[FineTune] applyGroups failed for node', nodeId, e);
       }
     }
   }
@@ -245,8 +245,8 @@ async function updateTextStyles(groups: DeduplicatedGroup[]): Promise<StyleUpdat
             letterSpacing: `${group.result.letterSpacing}px`,
           },
         });
-      } catch (_) {
-        // skip
+      } catch (e) {
+        console.error('[FineTune] updateTextStyles failed for node', nodeId, e);
       }
     }
   }
@@ -416,13 +416,19 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
       break;
 
     case 'apply-selected': {
-      const textNodes = collectTextNodes(figma.currentPage.selection);
-      const { applied, styleChanges } = await processAndApply(textNodes);
-      const parts = [`${applied} layer${applied !== 1 ? 's' : ''}`];
-      if (styleChanges.length > 0) {
-        parts.push(`${styleChanges.length} style${styleChanges.length !== 1 ? 's' : ''} updated`);
+      try {
+        const textNodes = collectTextNodes(figma.currentPage.selection);
+        console.log('[FineTune] apply-selected:', textNodes.length, 'text nodes');
+        const { applied, styleChanges } = await processAndApply(textNodes);
+        const parts = [`${applied} layer${applied !== 1 ? 's' : ''}`];
+        if (styleChanges.length > 0) {
+          parts.push(`${styleChanges.length} style${styleChanges.length !== 1 ? 's' : ''} updated`);
+        }
+        figma.notify(`FineTune: ${parts.join(', ')}`);
+      } catch (e) {
+        console.error('[FineTune] apply-selected error:', e);
+        figma.notify('FineTune: Error — check console', { error: true });
       }
-      figma.notify(`FineTune: ${parts.join(', ')}`);
       break;
     }
 
