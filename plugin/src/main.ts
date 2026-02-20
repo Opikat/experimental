@@ -417,7 +417,44 @@ function processSelection(): void {
   sendGroupsToUI(groups, textNodes.length, false);
 }
 
-async function processAndApply(textNodes: TextNode[]): Promise<{ applied: number; styleChanges: StyleChange[] }> {
+async function writeVariablesToFigma(groups: DeduplicatedGroup[]): Promise<void> {
+  try {
+    const collections = figma.variables.getLocalVariableCollections();
+    let collection = collections.find(c => c.name === 'FineTune');
+
+    if (!collection) {
+      collection = figma.variables.createVariableCollection('FineTune');
+    }
+
+    const defaultModeId = collection.modes[0].modeId;
+    const existingVars = figma.variables.getLocalVariables('FLOAT')
+      .filter(v => v.variableCollectionId === collection!.id);
+
+    for (const group of groups) {
+      if (group.isAlreadyGood) continue;
+
+      const baseName = `${group.info.fontFamily}/${group.info.fontSize}`;
+      const lhName = `${baseName}/line-height`;
+      const lsName = `${baseName}/letter-spacing`;
+
+      let lhVar = existingVars.find(v => v.name === lhName);
+      if (!lhVar) {
+        lhVar = figma.variables.createVariable(lhName, collection.id, 'FLOAT');
+      }
+      lhVar.setValueForMode(defaultModeId, group.result.lineHeight);
+
+      let lsVar = existingVars.find(v => v.name === lsName);
+      if (!lsVar) {
+        lsVar = figma.variables.createVariable(lsName, collection.id, 'FLOAT');
+      }
+      lsVar.setValueForMode(defaultModeId, group.result.letterSpacing);
+    }
+  } catch (e) {
+    console.error('[FineTune] writeVariablesToFigma error:', e);
+  }
+}
+
+async function processAndApply(textNodes: TextNode[]): Promise<{ applied: number; changes: StyleChange[] }> {
   // 1. Compute groups BEFORE applying — captures original "before" values
   const groups = computeGroups(textNodes);
 
@@ -425,28 +462,38 @@ async function processAndApply(textNodes: TextNode[]): Promise<{ applied: number
   sendGroupsToUI(groups, textNodes.length, true);
 
   // 3. Update text styles FIRST if enabled (so styled nodes keep their binding)
-  let styleChanges: StyleChange[] = [];
   let styledNodeIds = new Set<string>();
 
   if (settings.updateStyles) {
     const result = await updateTextStyles(groups);
-    styleChanges = result.changes;
     styledNodeIds = result.styledNodeIds;
-
-    if (styleChanges.length > 0) {
-      const changelog = formatChangelog(styleChanges);
-      figma.ui.postMessage({
-        type: 'style-changelog',
-        changelog,
-        changes: styleChanges,
-      });
-    }
   }
 
   // 4. Apply to nodes (skips styled nodes — they already inherited from the style)
   const applied = await applyGroups(groups, styledNodeIds);
 
-  return { applied, styleChanges };
+  // 5. Build changelog for ALL applied groups (not just style updates)
+  const changes: StyleChange[] = [];
+  for (const group of groups) {
+    if (group.isAlreadyGood) continue;
+    changes.push({
+      styleName: group.result.fontInfo,
+      before: { lineHeight: group.info.currentLineHeight, letterSpacing: group.info.currentLetterSpacing },
+      after: { lineHeight: `${group.result.lineHeightPercent}%`, letterSpacing: `${group.result.letterSpacing}px` },
+    });
+  }
+
+  if (changes.length > 0) {
+    const changelog = formatChangelog(changes);
+    figma.ui.postMessage({ type: 'style-changelog', changelog, changes });
+  }
+
+  // 6. Write to Figma Variables if enabled
+  if (settings.writeVariables) {
+    await writeVariablesToFigma(groups);
+  }
+
+  return { applied, changes };
 }
 
 // --- Message handler ---
@@ -469,12 +516,8 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
       try {
         const textNodes = collectTextNodes(figma.currentPage.selection);
         console.log('[FineTune] apply-selected:', textNodes.length, 'text nodes');
-        const { applied, styleChanges } = await processAndApply(textNodes);
-        const parts = [`${applied} layer${applied !== 1 ? 's' : ''}`];
-        if (styleChanges.length > 0) {
-          parts.push(`${styleChanges.length} style${styleChanges.length !== 1 ? 's' : ''} updated`);
-        }
-        figma.notify(`FineTune: ${parts.join(', ')}`);
+        const { applied } = await processAndApply(textNodes);
+        figma.notify(`FineTune: ${applied} layer${applied !== 1 ? 's' : ''} tuned`);
       } catch (e) {
         console.error('[FineTune] apply-selected error:', e);
         figma.notify('FineTune: Error — check console', { error: true });

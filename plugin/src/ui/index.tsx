@@ -85,6 +85,8 @@ function App() {
           setTotalLayers(msg.totalLayers || msg.results.length);
           setHasSelection(true);
           setSelectedExportIdx(0);
+          setStyleChanges([]);
+          setChangelog('');
           if (msg.results.length > 0) {
             parent.postMessage({
               pluginMessage: {
@@ -185,144 +187,158 @@ function App() {
             No text layers in selection
           </div>
         </div>
-      ) : (
-        <>
-          <div class="section">
-            <div class="section-title">
-              {results.length === 1
-                ? 'Result'
-                : `${results.length} unique style${results.length > 1 ? 's' : ''} (${totalLayers} layer${totalLayers !== 1 ? 's' : ''})`}
+      ) : (() => {
+        const fixable: Array<{ r: ResultEntry; idx: number }> = [];
+        const good: Array<{ r: ResultEntry; idx: number }> = [];
+        results.forEach((r, idx) => {
+          if (r.isAlreadyGood) good.push({ r, idx });
+          else fixable.push({ r, idx });
+        });
+
+        const renderCard = (r: ResultEntry, idx: number) => (
+          <div
+            key={r.nodeId}
+            class={`result-card${results.length > 1 && idx === selectedExportIdx ? ' result-card-selected' : ''}${r.isAlreadyGood ? ' result-card-good' : ''}`}
+            onClick={() => results.length > 1 && handleSelectExport(idx)}
+          >
+            <div class="font-info">
+              <span class="font-info-name">{r.fontInfo}</span>
+              <span class="font-info-badges">
+                {r.count > 1 && <span class="count-badge">{r.count}x</span>}
+                {r.isAlreadyGood && <span class="good-badge">good</span>}
+                {r.isApproximate && !r.isAlreadyGood && <span class="approximate-badge">approx</span>}
+              </span>
             </div>
-            <div class="results-list">
-              {results.map((r, idx) => (
-                <div
-                  key={r.nodeId}
-                  class={`result-card${results.length > 1 && idx === selectedExportIdx ? ' result-card-selected' : ''}${r.isAlreadyGood ? ' result-card-good' : ''}`}
-                  onClick={() => results.length > 1 && handleSelectExport(idx)}
-                >
-                  <div class="font-info">
-                    {r.fontInfo}
-                    {r.count > 1 && (
-                      <span class="count-badge">{r.count}x</span>
-                    )}
-                    {r.isAlreadyGood && (
-                      <span class="good-badge">good</span>
-                    )}
-                    {r.isApproximate && !r.isAlreadyGood && (
-                      <span class="approximate-badge">approx</span>
-                    )}
-                  </div>
-                  {r.isAlreadyGood ? (
-                    <div class="good-message">Values are already well-tuned</div>
-                  ) : (
-                    <>
-                      <div class="result-row">
-                        <span class="result-label">Line-height</span>
-                        <span>
-                          <span class="result-value">
-                            {r.after.lineHeight}px
-                          </span>
-                          <span style="color: var(--figma-color-text-secondary, #888); margin-left: 4px">
-                            ({r.after.lineHeightPercent}%)
-                          </span>
-                          <span class="result-prev">
-                            {r.before.lineHeight}
-                          </span>
-                        </span>
-                      </div>
-                      <div class="result-row">
-                        <span class="result-label">Letter-spacing</span>
-                        <span>
-                          <span class="result-value">
-                            {r.after.letterSpacing}px
-                          </span>
-                          <span style="color: var(--figma-color-text-secondary, #888); margin-left: 4px">
-                            ({r.after.letterSpacingPercent}%)
-                          </span>
-                          <span class="result-prev">
-                            {r.before.letterSpacing}
-                          </span>
-                        </span>
-                      </div>
-                    </>
-                  )}
+            {r.isAlreadyGood ? (
+              <>
+                <div class="result-row">
+                  <span class="result-label">Line-height</span>
+                  <span class="result-value">{r.before.lineHeight}</span>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Apply button */}
-          <button class="btn btn-primary" onClick={handleApplySelected}>
-            Apply to selected
-          </button>
-
-          {/* Changelog */}
-          {styleChanges.length > 0 && (
-            <>
-              <div class="divider" />
-              <div class="section">
-                <div class="section-title">
-                  Changelog ({styleChanges.length} style{styleChanges.length !== 1 ? 's' : ''})
+                <div class="result-row">
+                  <span class="result-label">Letter-spacing</span>
+                  <span class="result-value">{r.before.letterSpacing}</span>
                 </div>
-                <div class="changelog-list">
-                  {styleChanges.map(c => (
-                    <div class="changelog-item" key={c.styleName}>
-                      <div class="changelog-name">{c.styleName}</div>
-                      <div class="changelog-diff">
-                        LH: {c.before.lineHeight} → {c.after.lineHeight}
-                      </div>
-                      <div class="changelog-diff">
-                        LS: {c.before.letterSpacing} → {c.after.letterSpacing}
-                      </div>
-                    </div>
-                  ))}
+              </>
+            ) : (
+              <>
+                <div class="result-row">
+                  <span class="result-label">Line-height</span>
+                  <span>
+                    <span class="result-value">{r.after.lineHeight}px</span>
+                    <span class="result-secondary"> ({r.after.lineHeightPercent}%)</span>
+                    <span class="result-prev">{r.before.lineHeight}</span>
+                  </span>
                 </div>
-                <button class="btn btn-secondary" onClick={handleCopyChangelog}>
-                  {copiedChangelog ? 'Copied!' : 'Copy changelog (markdown)'}
-                </button>
-              </div>
-            </>
-          )}
-
-          <div class="divider" />
-
-          {/* Export */}
-          <div class="section">
-            <div class="section-title">
-              Export
-              {results.length > 1 && (
-                <span style="font-weight: 400; text-transform: none; margin-left: 4px">
-                  — {results[selectedExportIdx].fontInfo}
-                </span>
-              )}
-            </div>
-            <div class="export-tabs">
-              {([
-                ['css', 'CSS'],
-                ['css-fluid', 'Fluid'],
-                ['ios', 'iOS'],
-                ['android', 'Android'],
-              ] as [ExportFormat, string][]).map(([fmt, label]) => (
-                <button
-                  key={fmt}
-                  class={`export-tab${exportFormat === fmt ? ' active' : ''}`}
-                  onClick={() => handleExportTab(fmt)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {exportCode && (
-              <div class="code-block">
-                {exportCode}
-                <button class="copy-btn" onClick={handleCopy}>
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
+                <div class="result-row">
+                  <span class="result-label">Letter-spacing</span>
+                  <span>
+                    <span class="result-value">{r.after.letterSpacing}px</span>
+                    <span class="result-secondary"> ({r.after.letterSpacingPercent}%)</span>
+                    <span class="result-prev">{r.before.letterSpacing}</span>
+                  </span>
+                </div>
+              </>
             )}
           </div>
-        </>
-      )}
+        );
+
+        return (
+          <>
+            <div class="section">
+              <div class="section-title">
+                {results.length === 1
+                  ? 'Result'
+                  : `${results.length} unique style${results.length > 1 ? 's' : ''} (${totalLayers} layer${totalLayers !== 1 ? 's' : ''})`}
+              </div>
+              <div class="results-list">
+                {fixable.map(({ r, idx }) => renderCard(r, idx))}
+              </div>
+              {good.length > 0 && (
+                <>
+                  {fixable.length > 0 && (
+                    <div class="subsection-title">Well-tuned</div>
+                  )}
+                  <div class="results-list">
+                    {good.map(({ r, idx }) => renderCard(r, idx))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Apply button */}
+            <button class="btn btn-primary" onClick={handleApplySelected}>
+              Apply to selected
+            </button>
+
+            {/* Changelog */}
+            {styleChanges.length > 0 && (
+              <>
+                <div class="divider" />
+                <div class="section">
+                  <div class="section-title">
+                    Changelog ({styleChanges.length} change{styleChanges.length !== 1 ? 's' : ''})
+                  </div>
+                  <div class="changelog-list">
+                    {styleChanges.map(c => (
+                      <div class="changelog-item" key={c.styleName}>
+                        <div class="changelog-name">{c.styleName}</div>
+                        <div class="changelog-diff">
+                          LH: {c.before.lineHeight} → {c.after.lineHeight}
+                        </div>
+                        <div class="changelog-diff">
+                          LS: {c.before.letterSpacing} → {c.after.letterSpacing}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button class="btn btn-secondary" onClick={handleCopyChangelog}>
+                    {copiedChangelog ? 'Copied!' : 'Copy changelog (markdown)'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            <div class="divider" />
+
+            {/* Export */}
+            <div class="section">
+              <div class="section-title">
+                Export
+                {results.length > 1 && (
+                  <span style="font-weight: 400; text-transform: none; margin-left: 4px">
+                    — {results[selectedExportIdx].fontInfo}
+                  </span>
+                )}
+              </div>
+              <div class="export-tabs">
+                {([
+                  ['css', 'CSS'],
+                  ['css-fluid', 'Fluid'],
+                  ['ios', 'iOS'],
+                  ['android', 'Android'],
+                ] as [ExportFormat, string][]).map(([fmt, label]) => (
+                  <button
+                    key={fmt}
+                    class={`export-tab${exportFormat === fmt ? ' active' : ''}`}
+                    onClick={() => handleExportTab(fmt)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {exportCode && (
+                <div class="code-block">
+                  {exportCode}
+                  <button class="copy-btn" onClick={handleCopy}>
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       <div class="divider" />
 

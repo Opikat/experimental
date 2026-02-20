@@ -97,8 +97,15 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 280px;
-  overflow-y: auto;
+}
+
+.subsection-title {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--figma-color-text-tertiary, #b3b3b3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
 }
 
 /* --- Result card --- */
@@ -128,7 +135,22 @@ select:focus {
   margin-bottom: 8px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
+}
+
+.font-info-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.font-info-badges {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .count-badge {
@@ -159,13 +181,13 @@ select:focus {
 }
 
 .result-card-good {
-  opacity: 0.65;
+  opacity: 0.7;
+  border-left: 2px solid var(--figma-color-bg-success, #d4edda);
 }
 
-.good-message {
-  font-size: 10px;
-  color: var(--figma-color-text-success, #155724);
-  padding: 2px 0;
+.result-secondary {
+  color: var(--figma-color-text-secondary, #888);
+  margin-left: 4px;
 }
 
 .result-row {
@@ -450,8 +472,6 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 160px;
-  overflow-y: auto;
 }
 
 .changelog-item {
