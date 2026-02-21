@@ -252,6 +252,11 @@ function App() {
                 ? 'Result'
                 : `${results.length} unique style${results.length > 1 ? 's' : ''} (${totalLayers} layer${totalLayers !== 1 ? 's' : ''})`}
             </div>
+            {styleChanges.length > 0 && (
+              <button class="log-badge" onClick={() => setShowLog(true)}>
+                Log ({styleChanges.length})
+              </button>
+            )}
           </div>
 
           {/* Scrollable results only */}
@@ -281,19 +286,12 @@ function App() {
 
           {/* Fixed middle: Apply + Export */}
           <div class="middle-bar">
-            {/* Apply button + log badge */}
-            <div class="apply-row">
-              <button class="btn btn-primary" onClick={handleApplySelected}>
-                Apply to selected
-              </button>
-              {styleChanges.length > 0 && (
-                <button class="log-badge" onClick={() => setShowLog(true)}>
-                  Log ({styleChanges.length})
-                </button>
-              )}
-            </div>
+            {/* Apply button */}
+            <button class="btn btn-primary" onClick={handleApplySelected}>
+              Apply to selected
+            </button>
 
-            <div class="divider" />
+            <div class="divider divider-full" />
 
             {/* Export */}
             <div class="section">

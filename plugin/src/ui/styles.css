@@ -25,6 +25,10 @@ body {
 .top-header {
   flex-shrink: 0;
   padding: 12px 12px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .main-scroll {
@@ -39,7 +43,6 @@ body {
 
 .middle-bar {
   flex-shrink: 0;
-  border-top: 1px solid var(--figma-color-border, #e5e5e5);
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
@@ -75,6 +78,11 @@ body {
 .divider {
   height: 1px;
   background: var(--figma-color-border, #e5e5e5);
+}
+
+.divider-full {
+  margin-left: -12px;
+  margin-right: -12px;
 }
 
 /* --- Results list --- */
@@ -256,17 +264,6 @@ body {
 
 .btn-secondary:hover {
   background: var(--figma-color-bg-tertiary, #eee);
-}
-
-/* Apply row: button + log badge */
-.apply-row {
-  display: flex;
-  gap: 6px;
-  align-items: stretch;
-}
-
-.apply-row .btn-primary {
-  flex: 1;
 }
 
 .log-badge {
