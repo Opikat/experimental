@@ -5,7 +5,6 @@ type ExportFormat = 'css' | 'css-fluid' | 'ios' | 'android';
 
 interface Settings {
   autoApply: boolean;
-  writeVariables: boolean;
   updateStyles: boolean;
   gridStep: number;
 }
@@ -51,7 +50,6 @@ function copyText(text: string): boolean {
 function App() {
   const [settings, setSettings] = useState<Settings>({
     autoApply: false,
-    writeVariables: false,
     updateStyles: false,
     gridStep: 4,
   });
@@ -345,11 +343,6 @@ function App() {
               onChange={(e) => updateSetting('updateStyles', (e.target as HTMLInputElement).checked)} />
             <label for="updateStyles">Update text styles</label>
           </div>
-          <div class="checkbox-row">
-            <input type="checkbox" id="writeVariables" checked={settings.writeVariables}
-              onChange={(e) => updateSetting('writeVariables', (e.target as HTMLInputElement).checked)} />
-            <label for="writeVariables">Save to Figma Variables</label>
-          </div>
         </div>
         <div class="settings-row">
           <span class="settings-row-label">Pixel grid</span>
@@ -429,12 +422,6 @@ function App() {
                 <div class="help-name">Update text styles</div>
                 <div class="help-desc">
                   When a text layer uses a shared text style, the style definition itself is updated — all instances across the file change automatically. A changelog is shown so you can track what changed.
-                </div>
-              </div>
-              <div class="help-item">
-                <div class="help-name">Save to Figma Variables</div>
-                <div class="help-desc">
-                  Creates a "FineTune" variable collection with line-height and letter-spacing tokens that developers can read directly. Includes Light and Dark mode variants.
                 </div>
               </div>
               <div class="help-item">

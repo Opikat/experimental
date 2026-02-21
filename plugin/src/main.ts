@@ -23,7 +23,6 @@ const DEFAULT_SETTINGS: PluginSettings = {
   bgMode: 'auto',
   contextOverride: CONTEXT_OVERRIDE,
   autoApply: false,
-  writeVariables: false,
   updateStyles: false,
 };
 
@@ -417,43 +416,6 @@ function processSelection(): void {
   sendGroupsToUI(groups, textNodes.length, false);
 }
 
-async function writeVariablesToFigma(groups: DeduplicatedGroup[]): Promise<void> {
-  try {
-    const collections = figma.variables.getLocalVariableCollections();
-    let collection = collections.find(c => c.name === 'FineTune');
-
-    if (!collection) {
-      collection = figma.variables.createVariableCollection('FineTune');
-    }
-
-    const defaultModeId = collection.modes[0].modeId;
-    const existingVars = figma.variables.getLocalVariables('FLOAT')
-      .filter(v => v.variableCollectionId === collection!.id);
-
-    for (const group of groups) {
-      if (group.isAlreadyGood) continue;
-
-      const baseName = `${group.info.fontFamily}/${group.info.fontSize}`;
-      const lhName = `${baseName}/line-height`;
-      const lsName = `${baseName}/letter-spacing`;
-
-      let lhVar = existingVars.find(v => v.name === lhName);
-      if (!lhVar) {
-        lhVar = figma.variables.createVariable(lhName, collection.id, 'FLOAT');
-      }
-      lhVar.setValueForMode(defaultModeId, group.result.lineHeight);
-
-      let lsVar = existingVars.find(v => v.name === lsName);
-      if (!lsVar) {
-        lsVar = figma.variables.createVariable(lsName, collection.id, 'FLOAT');
-      }
-      lsVar.setValueForMode(defaultModeId, group.result.letterSpacing);
-    }
-  } catch (e) {
-    console.error('[FineTune] writeVariablesToFigma error:', e);
-  }
-}
-
 async function processAndApply(textNodes: TextNode[]): Promise<{ applied: number; changes: StyleChange[] }> {
   // 1. Compute groups BEFORE applying — captures original "before" values
   const groups = computeGroups(textNodes);
@@ -486,11 +448,6 @@ async function processAndApply(textNodes: TextNode[]): Promise<{ applied: number
   if (changes.length > 0) {
     const changelog = formatChangelog(changes);
     figma.ui.postMessage({ type: 'style-changelog', changelog, changes });
-  }
-
-  // 6. Write to Figma Variables if enabled
-  if (settings.writeVariables) {
-    await writeVariablesToFigma(groups);
   }
 
   return { applied, changes };
