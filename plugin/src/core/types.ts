@@ -41,7 +41,6 @@ export interface PluginSettings {
   bgMode: BgMode;
   contextOverride: TextContext | 'auto';
   autoApply: boolean;
-  writeVariables: boolean;
   updateStyles: boolean;
 }
 

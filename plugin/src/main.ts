@@ -23,7 +23,6 @@ const DEFAULT_SETTINGS: PluginSettings = {
   bgMode: 'auto',
   contextOverride: CONTEXT_OVERRIDE,
   autoApply: false,
-  writeVariables: false,
   updateStyles: false,
 };
 
@@ -121,8 +120,13 @@ function analyzeTextNode(node: TextNode): TextLayerInfo | null {
   const fontSize = node.fontSize;
   if (typeof fontSize === 'symbol') return null; // mixed sizes
 
-  const textCase = node.textCase;
-  const isUppercase = textCase === 'UPPER';
+  let isUppercase = false;
+  try {
+    const textCase = node.textCase;
+    isUppercase = textCase === 'UPPER';
+  } catch (_) {
+    // textCase may throw on some nodes
+  }
 
   const darkBg = isDarkBackground(node);
 
@@ -158,10 +162,12 @@ function collectTextNodes(nodes: readonly SceneNode[]): TextNode[] {
 async function applyToNode(node: TextNode, result: TypographyResult): Promise<void> {
   // Must load font before modifying text properties
   const fontName = node.fontName;
-  if (typeof fontName !== 'symbol') {
-    await figma.loadFontAsync(fontName);
+  if (typeof fontName === 'symbol') {
+    console.warn('[FineTune] node', node.id, 'has mixed fonts, skipping');
+    return;
   }
 
+  await figma.loadFontAsync(fontName);
   node.lineHeight = { value: result.lineHeightPercent, unit: 'PERCENT' };
   node.letterSpacing = { value: result.letterSpacing, unit: 'PIXELS' };
 }
@@ -417,36 +423,46 @@ function processSelection(): void {
   sendGroupsToUI(groups, textNodes.length, false);
 }
 
-async function processAndApply(textNodes: TextNode[]): Promise<{ applied: number; styleChanges: StyleChange[] }> {
-  // 1. Compute groups BEFORE applying — captures original "before" values
+async function processAndApply(textNodes: TextNode[]): Promise<{ applied: number; changes: StyleChange[] }> {
   const groups = computeGroups(textNodes);
+  const fixableCount = groups.filter(g => !g.isAlreadyGood).length;
+  const goodCount = groups.filter(g => g.isAlreadyGood).length;
+  console.log(`[FineTune] ${groups.length} groups: ${fixableCount} fixable, ${goodCount} good`);
 
-  // 2. Send preview to UI with correct before/after
+  for (const g of groups) {
+    console.log(`[FineTune]   ${g.result.fontInfo}: LH ${g.info.currentLineHeightPx.toFixed(1)}→${g.result.lineHeight}px, LS ${g.info.currentLetterSpacingPx.toFixed(2)}→${g.result.letterSpacing}px ${g.isAlreadyGood ? '(good)' : '(fix)'}`);
+  }
+
   sendGroupsToUI(groups, textNodes.length, true);
 
-  // 3. Update text styles FIRST if enabled (so styled nodes keep their binding)
-  let styleChanges: StyleChange[] = [];
   let styledNodeIds = new Set<string>();
 
   if (settings.updateStyles) {
     const result = await updateTextStyles(groups);
-    styleChanges = result.changes;
     styledNodeIds = result.styledNodeIds;
-
-    if (styleChanges.length > 0) {
-      const changelog = formatChangelog(styleChanges);
-      figma.ui.postMessage({
-        type: 'style-changelog',
-        changelog,
-        changes: styleChanges,
-      });
-    }
+    console.log('[FineTune] styled nodes:', styledNodeIds.size);
   }
 
-  // 4. Apply to nodes (skips styled nodes — they already inherited from the style)
   const applied = await applyGroups(groups, styledNodeIds);
+  console.log('[FineTune] applied to', applied, 'nodes');
 
-  return { applied, styleChanges };
+  // 5. Build changelog for ALL applied groups (not just style updates)
+  const changes: StyleChange[] = [];
+  for (const group of groups) {
+    if (group.isAlreadyGood) continue;
+    changes.push({
+      styleName: group.result.fontInfo,
+      before: { lineHeight: group.info.currentLineHeight, letterSpacing: group.info.currentLetterSpacing },
+      after: { lineHeight: `${group.result.lineHeightPercent}%`, letterSpacing: `${group.result.letterSpacing}px` },
+    });
+  }
+
+  if (changes.length > 0) {
+    const changelog = formatChangelog(changes);
+    figma.ui.postMessage({ type: 'style-changelog', changelog, changes });
+  }
+
+  return { applied, changes };
 }
 
 // --- Message handler ---
@@ -467,14 +483,23 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
 
     case 'apply-selected': {
       try {
-        const textNodes = collectTextNodes(figma.currentPage.selection);
-        console.log('[FineTune] apply-selected:', textNodes.length, 'text nodes');
-        const { applied, styleChanges } = await processAndApply(textNodes);
-        const parts = [`${applied} layer${applied !== 1 ? 's' : ''}`];
-        if (styleChanges.length > 0) {
-          parts.push(`${styleChanges.length} style${styleChanges.length !== 1 ? 's' : ''} updated`);
+        const selection = figma.currentPage.selection;
+        console.log('[FineTune] apply-selected: selection has', selection.length, 'top-level nodes');
+        const textNodes = collectTextNodes(selection);
+        console.log('[FineTune] found', textNodes.length, 'text nodes');
+
+        if (textNodes.length === 0) {
+          figma.notify('FineTune: No text layers in selection');
+          break;
         }
-        figma.notify(`FineTune: ${parts.join(', ')}`);
+
+        const { applied } = await processAndApply(textNodes);
+
+        if (applied === 0) {
+          figma.notify('FineTune: All styles are already well-tuned');
+        } else {
+          figma.notify(`FineTune: ${applied} layer${applied !== 1 ? 's' : ''} tuned`);
+        }
       } catch (e) {
         console.error('[FineTune] apply-selected error:', e);
         figma.notify('FineTune: Error — check console', { error: true });
